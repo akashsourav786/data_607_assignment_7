@@ -1,0 +1,146 @@
+---
+title: "Working with HTML and JSON"
+author: "Akash Sourav"
+format:
+  html:
+    toc: true
+    embed-resources: true
+    theme: flatly
+execute:
+  echo: true
+  message: false
+params:
+  data_base: "https://raw.githubusercontent.com/akashsourav786/data_607_assignment_7/main"
+---
+
+## Approach
+
+The subject of this exercise is building wealth through real estate and personal development. Three books were selected: *The Millionaire Real Estate Investor*, *The Book on Rental Property Investing*, and *Rich Dad Poor Dad*. The first book has three authors and meets the multiple-author requirement. The selected attributes are title, authors, publication year, publisher, and focus. The focus descriptions are short thematic summaries rather than official publisher classifications.
+
+The HTML and JSON files contain the same records and were written explicitly as text, rather than exported from an R data frame. HTML represents the data as table rows and cells. JSON represents each book as an object and its authors as an array. This exercise tests whether the two formats produce identical R data frames immediately after import and after standardizing their structure.
+
+## Book information and editions
+
+Publication year refers to the edition used here, not necessarily the book's first publication year. Short main titles are used consistently in both files.
+
+- **The Millionaire Real Estate Investor:** Gary Keller, Dave Jenks, and Jay Papasan; McGraw-Hill, 2005. [Publisher record](https://www.mheducation.com/highered/mhp/product/millionaire-real-estate-investor.html).
+- **The Book on Rental Property Investing:** Brandon Turner; BiggerPockets Publishing, 2020 edition. The publisher's excerpt lists copyright years 2015 and 2020; this dataset uses the 2020 version. [Publisher excerpt, copyright page](https://assets2.biggerpockets.com/uploads/user_file/file_object/2222/EXCERPT_Rental_Property_Investing.pdf).
+- **Rich Dad Poor Dad:** Robert T. Kiyosaki; Plata Publishing, 2017, 20th anniversary edition. [Library catalog record](https://catalog.wake.gov/GroupedWork/468e8aa9-8e34-2ae6-3855-2710c5cc6e82/Home).
+
+## Setup and data locations
+
+The report uses `rvest` for HTML, `jsonlite` for JSON, and `knitr` for tables. The two source files can be loaded from the same folder as the report or from a public raw-file URL. The `data_base` parameter sets the public folder URL; an empty value uses the local files. Keeping the URLs configurable makes the code usable both before and after publication.
+
+```{r setup}
+library(rvest)
+library(jsonlite)
+library(knitr)
+
+# The fallback also lets the extracted R script run by itself.
+data_base <- if (exists("params")) params$data_base else ""
+source_path <- function(filename) {
+  if (nzchar(data_base)) {
+    paste0(sub("/$", "", data_base), "/", filename)
+  } else {
+    filename
+  }
+}
+html_source <- source_path("books.html")
+json_source <- source_path("books.json")
+```
+
+Public source files: [books.html](https://raw.githubusercontent.com/akashsourav786/data_607_assignment_7/main/books.html) and [books.json](https://raw.githubusercontent.com/akashsourav786/data_607_assignment_7/main/books.json).
+
+## HTML structure and import
+
+In `books.html`, `<table>` contains the data, `<tr>` defines a row, `<th>` defines a column header, and `<td>` defines a data cell. Multiple authors occupy one cell and are separated by semicolons.
+
+```{r html-import}
+html_books <- read_html(html_source) |>
+  html_element("table#books") |>
+  html_table(trim = TRUE) |>
+  as.data.frame(stringsAsFactors = FALSE)
+
+kable(html_books, caption = "Book data imported from HTML")
+str(html_books)
+```
+
+The HTML import produces `r nrow(html_books)` rows and `r ncol(html_books)` columns. The authors column is a character vector: the three names in the first row form one string.
+
+## JSON structure and import
+
+In `books.json`, the outer square brackets contain three book objects. Curly braces enclose each object, with quoted keys and their corresponding values. Years are numbers without quotation marks. Every authors field is an array, even when the book has only one author, so the field has a consistent structure.
+
+```{r json-import}
+json_books <- fromJSON(json_source, simplifyDataFrame = TRUE)
+
+str(json_books)
+json_books$authors
+```
+
+The JSON import also produces `r nrow(json_books)` rows and `r ncol(json_books)` columns. Its authors column is a list whose elements are character vectors. This preserves the three authors as separate values for the first book.
+
+## Compare the imported data frames
+
+```{r initial-comparison}
+identical_before <- identical(html_books, json_books)
+identical_before
+
+column_types <- data.frame(
+  column = names(html_books),
+  html_type = vapply(html_books, typeof, character(1)),
+  json_type = vapply(json_books, typeof, character(1)),
+  row.names = NULL
+)
+kable(column_types, caption = "Storage types before standardization")
+```
+
+The initial `identical()` result is **`r identical_before`**. Although both files describe the same books, the authors column has different storage types: character in HTML and list in JSON. Converting the HTML result to a base data frame above removes an unrelated tibble-versus-data-frame distinction, allowing this comparison to focus on the actual column structure.
+
+## Standardize and compare again
+
+The original imported objects are kept unchanged. In a copy of the JSON data, join each author's name using the same semicolon separator as the HTML file. Then standardize column order, character whitespace, year type, row order, and row names. Sorting by title makes the comparison independent of source row order; titles are checked for uniqueness before sorting.
+
+```{r normalized-comparison}
+json_normalized <- json_books
+json_normalized$authors <- vapply(
+  json_books$authors,
+  function(author_names) paste(author_names, collapse = "; "),
+  character(1)
+)
+
+normalize_books <- function(df) {
+  df <- as.data.frame(df, stringsAsFactors = FALSE)
+  df <- df[c("title", "authors", "publication_year", "publisher", "focus")]
+  text_columns <- c("title", "authors", "publisher", "focus")
+  df[text_columns] <- lapply(df[text_columns], trimws)
+  df$publication_year <- as.integer(df$publication_year)
+  stopifnot(!anyDuplicated(df$title))
+  df <- df[order(df$title), ]
+  rownames(df) <- NULL
+  df
+}
+
+html_normalized <- normalize_books(html_books)
+json_normalized <- normalize_books(json_normalized)
+
+identical_after <- identical(html_normalized, json_normalized)
+identical_after
+all.equal(html_normalized, json_normalized)
+
+stopifnot(nrow(html_normalized) == 3L,
+          ncol(html_normalized) == 5L,
+          any(lengths(json_books$authors) > 1L),
+          !anyNA(html_normalized),
+          identical_after)
+
+kable(html_normalized, caption = "The common normalized data frame")
+```
+
+The normalized comparison returns **`r identical_after`**. Both data frames now contain the same three books, five columns, values, and column types. `all.equal()` provides a second check and can describe differences if the data change in a future run.
+
+## Conclusions
+
+HTML and JSON can represent the same information while preserving different structures. The original imported data frames are not identical because HTML stores multiple authors as one text string, while JSON preserves them as an array that becomes an R list column. After converting the authors to the same representation and standardizing the data-frame structure, the data frames are identical.
+
+HTML is convenient for displaying a rectangular table. JSON is useful when a record contains multiple values, such as several authors. The format itself does not guarantee equality after import; consistent values, types, ordering, and attributes must be checked. For later author-level analysis, retaining the JSON arrays or making a separate book-author table would be preferable to storing multiple names in one cell.

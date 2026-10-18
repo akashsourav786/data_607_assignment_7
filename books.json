@@ -1,0 +1,23 @@
+[
+  {
+    "title": "The Millionaire Real Estate Investor",
+    "authors": ["Gary Keller", "Dave Jenks", "Jay Papasan"],
+    "publication_year": 2005,
+    "publisher": "McGraw-Hill",
+    "focus": "Real estate investing and wealth-building habits"
+  },
+  {
+    "title": "The Book on Rental Property Investing",
+    "authors": ["Brandon Turner"],
+    "publication_year": 2020,
+    "publisher": "BiggerPockets Publishing",
+    "focus": "Rental property investing and management"
+  },
+  {
+    "title": "Rich Dad Poor Dad",
+    "authors": ["Robert T. Kiyosaki"],
+    "publication_year": 2017,
+    "publisher": "Plata Publishing",
+    "focus": "Financial mindset and personal development"
+  }
+]
